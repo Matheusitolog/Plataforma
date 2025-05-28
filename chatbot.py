@@ -18,7 +18,7 @@ from pathlib import Path
 # ======================
 class Config:
     # Configurações da API
-    API_KEY = "MEU_CEREBRO"
+    API_KEY = "AIzaSyBh_DPFaQRTNlzpMx-08iAnbAbTD6xZ5BQ"
     API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={API_KEY}"
     
     # URLs de checkout/páginas

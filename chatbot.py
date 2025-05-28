@@ -342,7 +342,7 @@ class NewPages:
         st.markdown("---")
         st.markdown("""
         <div style="text-align: center;">
-            <h3>🔓 Acesso Ilimitado por Apenas R$29,90/mês</h3>
+            <h3>🔓 Acesso Ilimitado por Apenas R$19,00/mês</h3>
         </div>
         """, unsafe_allow_html=True)
 

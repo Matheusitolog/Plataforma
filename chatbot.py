@@ -23,9 +23,9 @@ class Config:
     
     # URLs de checkout/páginas
     VIP_LINK = "https://exemplo.com/vip"
-    CHECKOUT_START = "https://checkout.exemplo.com/start"
-    CHECKOUT_PREMIUM = "https://checkout.exemplo.com/premium"
-    CHECKOUT_EXTREME = "https://checkout.exemplo.com/extreme"
+    CHECKOUT_START = "https://global.tribopay.com.br/q6e4izzy3m"
+    CHECKOUT_PREMIUM = "https://global.tribopay.com.br/uq17q1xzqw"
+    CHECKOUT_EXTREME = "https://global.tribopay.com.br/iqutgmiuq3"
     
     # URLs de assinatura VIP
     CHECKOUT_VIP_1MES = "https://checkout.exemplo.com/vip-1mes"

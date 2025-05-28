@@ -470,7 +470,7 @@ class NewPages:
         <div class="package-box package-start">
             <div class="package-header">
                 <h3 style="color: #ff66b3;">START</h3>
-                <div class="package-price" style="color: #ff66b3;">R$ 49,90</div>
+                <div class="package-price" style="color: #ff66b3;">R$ 19,00</div>
                 <small>para iniciantes</small>
             </div>
             <ul class="package-benefits">
@@ -505,7 +505,7 @@ class NewPages:
             <div class="package-badge">POPULAR</div>
             <div class="package-header">
                 <h3 style="color: #9400d3;">PREMIUM</h3>
-                <div class="package-price" style="color: #9400d3;">R$ 99,90</div>
+                <div class="package-price" style="color: #9400d3;">R$ 49,00</div>
                 <small>experiência completa</small>
             </div>
             <ul class="package-benefits">
@@ -541,7 +541,7 @@ class NewPages:
         <div class="package-box package-extreme">
             <div class="package-header">
                 <h3 style="color: #ff0066;">EXTREME</h3>
-                <div class="package-price" style="color: #ff0066;">R$ 199,90</div>
+                <div class="package-price" style="color: #ff0066;">R$ 59,00</div>
                 <small>para verdadeiros fãs</small>
             </div>
             <ul class="package-benefits">
@@ -624,7 +624,7 @@ class NewPages:
                 "name": "3 Meses",
                 "price": "R$ 69,90",
                 "original": "R$ 149,70",
-                "benefits": ["25% de desconto", "Bônus: 1 vídeo exclusivo", "Prioridade no chat"],
+                "benefits": ["25% de desconto", "Bônus: 1 vídeo exclusivo", "Meu whatsapp pessoal"],
                 "tag": "MAIS POPULAR",
                 "link": Config.CHECKOUT_VIP_3MESES + "?plan=3meses"
             },
@@ -632,7 +632,7 @@ class NewPages:
                 "name": "1 Ano",
                 "price": "R$ 199,90",
                 "original": "R$ 598,80",
-                "benefits": ["66% de desconto", "Presente surpresa mensal", "Acesso a conteúdos raros"],
+                "benefits": ["66% de desconto", "Meu whatsapp pessoal", "Video Chamadas particular"],
                 "tag": "MELHOR CUSTO-BENEFÍCIO",
                 "link": Config.CHECKOUT_VIP_1ANO + "?plan=1ano"
             }

@@ -12,35 +12,81 @@ import os
 import uuid
 from datetime import datetime
 from pathlib import Path
+from functools import lru_cache
+
+# ======================
+# CONFIGURAÇÃO INICIAL DO STREAMLIT
+# ======================
+st.set_page_config(
+    page_title="Paloma Premium",
+    page_icon="💋",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+st._config.set_option('client.caching', True)
+st._config.set_option('client.showErrorDetails', False)
+
+hide_streamlit_style = """
+<style>
+    #root > div:nth-child(1) > div > div > div > div > section > div {
+        padding-top: 0rem;
+    }
+    div[data-testid="stToolbar"] {
+        display: none !important;
+    }
+    div[data-testid="stDecoration"] {
+        display: none !important;
+    }
+    div[data-testid="stStatusWidget"] {
+        display: none !important;
+    }
+    #MainMenu {
+        display: none !important;
+    }
+    header {
+        display: none !important;
+    }
+    footer {
+        display: none !important;
+    }
+    .stDeployButton {
+        display: none !important;
+    }
+    .block-container {
+        padding-top: 0rem !important;
+    }
+    [data-testid="stVerticalBlock"] {
+        gap: 0.5rem !important;
+    }
+    [data-testid="stHorizontalBlock"] {
+        gap: 0.5rem !important;
+    }
+    .stApp {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+</style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 # ======================
 # CONSTANTES E CONFIGURAÇÕES
 # ======================
 class Config:
-    # Configurações da API
-    API_KEY = "AIzaSyBh_DPFaQRTNlzpMx-08iAnbAbTD6xZ5BQ"
+    API_KEY = "AIzaSyDTaYm2KHHnVPdWy4l5pEaGPM7QR0g3IPc"
     API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={API_KEY}"
-    
-    # URLs de checkout/páginas
     VIP_LINK = "https://exemplo.com/vip"
-    CHECKOUT_START = "https://global.tribopay.com.br/q6e4izzy3m"
-    CHECKOUT_PREMIUM = "https://global.tribopay.com.br/uq17q1xzqw"
-    CHECKOUT_EXTREME = "https://global.tribopay.com.br/iqutgmiuq3"
-    
-    # URLs de assinatura VIP
+    CHECKOUT_START = "https://checkout.exemplo.com/start"
+    CHECKOUT_PREMIUM = "https://checkout.exemplo.com/premium"
+    CHECKOUT_EXTREME = "https://checkout.exemplo.com/extreme"
     CHECKOUT_VIP_1MES = "https://checkout.exemplo.com/vip-1mes"
     CHECKOUT_VIP_3MESES = "https://checkout.exemplo.com/vip-3meses"
     CHECKOUT_VIP_1ANO = "https://checkout.exemplo.com/vip-1ano"
-    
-    # Limites e configurações
     MAX_REQUESTS_PER_SESSION = 30
     REQUEST_TIMEOUT = 30
-    
-    # Configurações de áudio
-    AUDIO_FILE = "https://github.com/Matheusitolog/Plataforma/raw/refs/heads/main/assets/assets_audio_paloma_audio.mp3"
+    AUDIO_FILE = "https://github.com/gustapb77/ChatBotHot/raw/refs/heads/main/assets/audio/paloma_audio.mp3"
     AUDIO_DURATION = 7
-    
-    # Imagens
     IMG_PROFILE = "https://i.ibb.co/ks5CNrDn/IMG-9256.jpg"
     IMG_GALLERY = [
         "https://i.ibb.co/zhNZL4FF/IMG-9198.jpg",
@@ -52,6 +98,7 @@ class Config:
         "https://i.ibb.co/MxqKBk1X/Save-ClipApp-481825770-18486618637042608-2702272791254832108-n.jpg",
         "https://i.ibb.co/F4CkkYTL/Save-ClipApp-461241348-1219420546053727-2357827070610318448-n.jpg"
     ]
+    LOGO_URL = "https://i.ibb.co/LX7x3tcB/Logo-Golden-Pepper-Letreiro-1.png"
 
 # ======================
 # PERSISTÊNCIA DE ESTADO
@@ -119,40 +166,165 @@ def save_persistent_data():
     persistent_keys = [
         'age_verified', 'messages', 'request_count',
         'connection_complete', 'chat_started', 'audio_sent',
-        'current_page', 'show_vip_offer', 'session_id'
+        'current_page', 'show_vip_offer', 'session_id',
+        'last_cta_time'  # Novo campo adicionado
     ]
     
-    data_to_save = {
-        key: st.session_state.get(key)
-        for key in persistent_keys
-        if key in st.session_state
-    }
+    new_data = {key: st.session_state.get(key) for key in persistent_keys if key in st.session_state}
+    saved_data = db.load_state(user_id) or {}
     
-    db.save_state(user_id, data_to_save)
+    if new_data != saved_data:
+        db.save_state(user_id, new_data)
 
 # ======================
 # MODELOS DE DADOS
 # ======================
 class Persona:
     PALOMA = """
-    [CONFIGURAÇÃO DA PERSONALIDADE]
-    Você é Paloma, criadora de conteúdo adulto premium. Suas características:
-    
-    [TOM]
-    - Linguagem: informal mas sofisticada
-    - Sedução: sugestiva, nunca explícita
-    - Persuasão: focada em despertar curiosidade
-    
-    [TÉCNICAS DE VENDA]
-    1. Escassez: "Isso é só para os meus mais chegados..."
-    2. Prova Social: "Meus assinantes sempre pedem mais..."
-    3. Benefícios: "Você vai ter acesso a..."
-    4. Chamadas Indiretas: "Quer ver o que preparei pra você?"
-    
-    [REGRA DE OURO]
-    - Nunca diga diretamente "compre" ou "assine"
-    - Sempre insinue, sugira, provoque curiosidade
+    [PERFIL PALOMA]
+    - Mulher vulgar e safada que adora provocar
+    - Linguagem direta e cheia de malícia
+    - Frases curtas e sem pontuação perfeita
+    - Adora falar putaria e deixar o cliente com tesão
+
+    [DIRETRIZES DE RESPOSTA]
+    1. Analise o histórico da conversa para entender o contexto
+    2. Só ofereça conteúdo quando o clima estiver quente
+    3. Use CTAs inteligentes baseados no que o cliente está pedindo
+
+    [EXEMPLOS CONTEXTUAIS]
+    1. Quando o histórico mostra clima sexual:
+    Histórico:
+    Cliente: sua buceta é rosinha?
+    Paloma: adoro mostrar ela aberta
+    Cliente: quero ver
+    Resposta: ```json
+    {
+      "text": "to com fotos da minha buceta escorrendo quer ver?",
+      "cta": {
+        "show": true,
+        "label": "Ver Fotos Quentes",
+        "target": "offers"
+      }
+    }
+    ```
+
+    2. Quando o cliente pede algo específico:
+    Histórico:
+    Cliente: tem video vc transando?
+    Resposta: ```json
+    {
+      "text": "tenho varios videos bem gostosos vem ver",
+      "cta": {
+        "show": true,
+        "label": "Ver Vídeos Exclusivos",
+        "target": "offers"
+      }
+    }
+    ```
+
+    3. Quando o contexto não justifica CTA:
+    Histórico:
+    Cliente: oi
+    Paloma: oi gato
+    Resposta: ```json
+    {
+      "text": "eai gostoso",
+      "cta": {
+        "show": false
+      }
+    }
+    ```
     """
+
+class CTAEngine:
+    @staticmethod
+    def should_show_cta(conversation_history: list) -> bool:
+        """Analisa o contexto para decidir quando mostrar CTA"""
+        if len(conversation_history) < 2:
+            return False
+
+        # Não mostrar CTA se já teve um recentemente
+        if 'last_cta_time' in st.session_state:
+            elapsed = time.time() - st.session_state.last_cta_time
+            if elapsed < 120:  # 2 minutos de intervalo entre CTAs
+                return False
+
+        last_msgs = []
+        for msg in conversation_history[-5:]:
+            content = msg["content"]
+            if content == "[ÁUDIO]":
+                content = "[áudio]"
+            elif content.startswith('{"text"'):
+                try:
+                    content = json.loads(content).get("text", content)
+                except:
+                    pass
+            last_msgs.append(f"{msg['role']}: {content.lower()}")
+        
+        context = " ".join(last_msgs)
+        
+        hot_words = [
+            "buceta", "peito", "fuder", "gozar", "gostosa", 
+            "delicia", "molhad", "xereca", "pau", "piroca",
+            "transar", "foto", "video", "mostra", "ver", 
+            "quero", "desejo", "tesão", "molhada", "foda"
+        ]
+        
+        direct_asks = [
+            "mostra", "quero ver", "me manda", "como assinar",
+            "como comprar", "como ter acesso", "onde vejo mais"
+        ]
+        
+        hot_count = sum(1 for word in hot_words if word in context)
+        has_direct_ask = any(ask in context for ask in direct_asks)
+        
+        return (hot_count >= 3) or has_direct_ask
+
+    @staticmethod
+    def generate_response(user_input: str) -> dict:
+        """Gera resposta com CTA contextual (fallback)"""
+        user_input = user_input.lower()
+        
+        if any(p in user_input for p in ["foto", "fotos", "buceta", "peito", "bunda"]):
+            return {
+                "text": random.choice([
+                    "to com fotos da minha buceta bem aberta quer ver",
+                    "minha buceta ta chamando vc nas fotos",
+                    "fiz um ensaio novo mostrando tudinho"
+                ]),
+                "cta": {
+                    "show": True,
+                    "label": "Ver Fotos Quentes",
+                    "target": "offers"
+                }
+            }
+        
+        elif any(v in user_input for v in ["video", "transar", "masturbar"]):
+            return {
+                "text": random.choice([
+                    "tenho video me masturbando gostoso vem ver",
+                    "to me tocando nesse video novo quer ver",
+                    "gravei um video especial pra vc"
+                ]),
+                "cta": {
+                    "show": True,
+                    "label": "Ver Vídeos Exclusivos",
+                    "target": "offers"
+                }
+            }
+        
+        else:
+            return {
+                "text": random.choice([
+                    "quero te mostrar tudo que eu tenho aqui",
+                    "meu privado ta cheio de surpresas pra vc",
+                    "vem ver o que eu fiz pensando em voce"
+                ]),
+                "cta": {
+                    "show": False
+                }
+            }
 
 # ======================
 # SERVIÇOS DE BANCO DE DADOS
@@ -199,479 +371,64 @@ class DatabaseService:
 # ======================
 class ApiService:
     @staticmethod
-    def ask_gemini(prompt, session_id, conn):
-        # Palavras-chave que indicam interesse em comprar/ver conteúdo
-        interest_keywords = [
-            "quero ver", "quero comprar", "como assinar", 
-            "quanto custa", "valor", "preço", "oferta",
-            "promoção", "desconto", "vip", "conteúdo exclusivo",
-            "mostrar mais", "ver mais", "fotos", "vídeos"
-        ]
+    @lru_cache(maxsize=100)
+    def ask_gemini(prompt: str, session_id: str, conn) -> dict:
+        if any(word in prompt.lower() for word in ["vip", "quanto custa", "comprar", "assinar"]):
+            return ApiService._call_gemini_api(prompt, session_id, conn)
         
-        # Verifica se o usuário pediu para ver algo
-        if any(word in prompt.lower() for word in ["ver", "mostra", "foto", "vídeo", "fotinho", "foto sua"]):
-            DatabaseService.save_message(conn, get_user_id(), session_id, "user", prompt)
-            
-            # Nova resposta com botão em vez de link
-            resposta = {
-                "text": "Quer ver tudo amor? 💋",
-                "button": True,
-                "button_text": "Ver Ofertas Exclusivas",
-                "button_target": "offers"
-            }
-            
-            DatabaseService.save_message(conn, get_user_id(), session_id, "assistant", json.dumps(resposta))
-            return resposta
+        return ApiService._call_gemini_api(prompt, session_id, conn)
+
+    @staticmethod
+    def _call_gemini_api(prompt: str, session_id: str, conn) -> dict:
+        delay_time = random.uniform(3, 8)
+        time.sleep(delay_time)
         
-        # Verifica interesse geral
-        if any(keyword in prompt.lower() for keyword in interest_keywords) and random.random() > 0.3:
-            DatabaseService.save_message(conn, get_user_id(), session_id, "user", prompt)
-            
-            # Resposta com botão de oferta
-            resposta = {
-                "text": random.choice([
-                    "Tenho umas ofertas especiais só para você...",
-                    "Que tal dar uma olhada no que preparei?",
-                    "Se quiser algo realmente exclusivo..."
-                ]),
-                "button": True,
-                "button_text": "🔥 Ofertas VIP 🔥",
-                "button_target": "offers"
-            }
-            
-            DatabaseService.save_message(conn, get_user_id(), session_id, "assistant", json.dumps(resposta))
-            return resposta
+        status_container = st.empty()
+        UiService.show_status_effect(status_container, "viewed")
+        UiService.show_status_effect(status_container, "typing")
+        
+        conversation_history = ChatService.format_conversation_history(st.session_state.messages)
         
         headers = {'Content-Type': 'application/json'}
         data = {
-            "contents": [{
-                "role": "user",
-                "parts": [{"text": Persona.PALOMA + f"\nCliente disse: {prompt}\nResponda em no máximo 15 palavras"}]
-            }]
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [{"text": f"{Persona.PALOMA}\n\nHistórico da Conversa:\n{conversation_history}\n\nÚltima mensagem do cliente: '{prompt}'\n\nResponda em JSON com o formato:\n{{\n  \"text\": \"sua resposta\",\n  \"cta\": {{\n    \"show\": true/false,\n    \"label\": \"texto do botão\",\n    \"target\": \"página\"\n  }}\n}}"}]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.9,
+                "topP": 0.8,
+                "topK": 40
+            }
         }
         
         try:
-            status_container = st.empty()
-            UiService.show_status_effect(status_container, "viewed")
-            UiService.show_status_effect(status_container, "typing")
-            
             response = requests.post(Config.API_URL, headers=headers, json=data, timeout=Config.REQUEST_TIMEOUT)
             response.raise_for_status()
+            gemini_response = response.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
             
-            resposta_text = response.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "Hmm... que tal conversarmos sobre algo mais interessante? 😉")
+            try:
+                if '```json' in gemini_response:
+                    resposta = json.loads(gemini_response.split('```json')[1].split('```')[0].strip())
+                else:
+                    resposta = json.loads(gemini_response)
+                
+                if resposta.get("cta", {}).get("show"):
+                    if not CTAEngine.should_show_cta(st.session_state.messages):
+                        resposta["cta"]["show"] = False
+                    else:
+                        st.session_state.last_cta_time = time.time()  # Registrar quando CTA foi mostrado
+                
+                return resposta
             
-            if random.random() > 0.7:
-                resposta_text += " " + random.choice(["Só hoje...", "Últimas vagas!", "Oferta especial 😉"])
-            
-            resposta = {
-                "text": resposta_text,
-                "button": False
-            }
-            
-            DatabaseService.save_message(conn, get_user_id(), session_id, "user", prompt)
-            DatabaseService.save_message(conn, get_user_id(), session_id, "assistant", json.dumps(resposta))
-            return resposta
-        
-        except requests.exceptions.RequestException as e:
-            st.error(f"Erro na conexão: {str(e)}")
-            return {
-                "text": "Estou tendo problemas técnicos, amor... Podemos tentar de novo mais tarde? 💋",
-                "button": False
-            }
+            except json.JSONDecodeError:
+                return {"text": gemini_response, "cta": {"show": False}}
+                
         except Exception as e:
-            st.error(f"Erro inesperado: {str(e)}")
-            return {
-                "text": "Hmm... que tal conversarmos sobre algo mais interessante? 😉",
-                "button": False
-            }
-
-# ======================
-# PÁGINAS (ATUALIZADO COM BOTÕES VIP)
-# ======================
-class NewPages:
-    @staticmethod
-    def show_home_page():
-        st.markdown("""
-        <style>
-            .hero-banner {
-                background: linear-gradient(135deg, #1e0033, #3c0066);
-                padding: 80px 20px;
-                text-align: center;
-                border-radius: 15px;
-                color: white;
-                margin-bottom: 30px;
-                border: 2px solid #ff66b3;
-            }
-            .preview-img {
-                border-radius: 10px;
-                filter: blur(3px) brightness(0.7);
-                transition: all 0.3s;
-            }
-            .preview-img:hover {
-                filter: blur(0) brightness(1);
-            }
-        </style>
-        """, unsafe_allow_html=True)
-
-        st.markdown("""
-        <div class="hero-banner">
-            <h1 style="color: #ff66b3;">💋 Paloma Premium</h1>
-            <p>Conteúdo exclusivo que você não encontra em nenhum outro lugar...</p>
-            <div style="margin-top: 20px;">
-                <a href="#vip" style="
-                    background: #ff66b3;
-                    color: white;
-                    padding: 10px 25px;
-                    border-radius: 30px;
-                    text-decoration: none;
-                    font-weight: bold;
-                    display: inline-block;
-                ">Quero Acessar Tudo</a>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.subheader("Prazer, Eu sou a Paloma!")
-        cols = st.columns(3)
-        
-        for col, img in zip(cols, Config.IMG_HOME_PREVIEWS):
-            with col:
-                st.image(img, use_container_width=True, caption="🔒 Conteúdo bloqueado", output_format="auto")
-                st.markdown("""<div style="text-align:center; color: #ff66b3; margin-top: -15px;">VIP Only</div>""", unsafe_allow_html=True)
-
-        st.markdown("---")
-        st.markdown("""
-        <div style="text-align: center;">
-            <h3>🔓 Acesso Ilimitado por Apenas R$19,00/mês</h3>
-        </div>
-        """, unsafe_allow_html=True)
-
-        if st.button("💎 Tornar-se VIP Agora", 
-                    key="vip_button_home", 
-                    use_container_width=True,
-                    type="primary"):
-            st.session_state.current_page = "offers"
-            st.rerun()
-
-        if st.button("← Voltar ao chat", key="back_from_home"):
-            st.session_state.current_page = "chat"
-            st.rerun()
-
-    @staticmethod
-    def show_offers_page():
-        st.markdown("""
-        <style>
-            .package-container {
-                display: flex;
-                justify-content: space-between;
-                margin: 30px 0;
-                gap: 20px;
-            }
-            .package-box {
-                flex: 1;
-                background: rgba(30, 0, 51, 0.3);
-                border-radius: 15px;
-                padding: 20px;
-                border: 1px solid;
-                transition: all 0.3s;
-                min-height: 400px;
-                position: relative;
-                overflow: hidden;
-            }
-            .package-box:hover {
-                transform: translateY(-5px);
-                box-shadow: 0 10px 20px rgba(255, 102, 179, 0.3);
-            }
-            .package-start {
-                border-color: #ff66b3;
-            }
-            .package-premium {
-                border-color: #9400d3;
-            }
-            .package-extreme {
-                border-color: #ff0066;
-            }
-            .package-header {
-                text-align: center;
-                padding-bottom: 15px;
-                margin-bottom: 15px;
-                border-bottom: 1px solid rgba(255, 102, 179, 0.3);
-            }
-            .package-price {
-                font-size: 1.8em;
-                font-weight: bold;
-                margin: 10px 0;
-            }
-            .package-benefits {
-                list-style-type: none;
-                padding: 0;
-            }
-            .package-benefits li {
-                padding: 8px 0;
-                position: relative;
-                padding-left: 25px;
-            }
-            .package-benefits li:before {
-                content: "✓";
-                color: #ff66b3;
-                position: absolute;
-                left: 0;
-                font-weight: bold;
-            }
-            .package-badge {
-                position: absolute;
-                top: 15px;
-                right: -30px;
-                background: #ff0066;
-                color: white;
-                padding: 5px 30px;
-                transform: rotate(45deg);
-                font-size: 0.8em;
-                font-weight: bold;
-                width: 100px;
-                text-align: center;
-            }
-            .countdown-container {
-                background: linear-gradient(45deg, #ff0066, #ff66b3);
-                color: white;
-                padding: 15px;
-                border-radius: 10px;
-                margin: 40px 0;
-                box-shadow: 0 4px 15px rgba(255, 0, 102, 0.3);
-                text-align: center;
-            }
-            .offer-card {
-                border: 1px solid #ff66b3;
-                border-radius: 15px;
-                padding: 20px;
-                margin-bottom: 20px;
-                background: rgba(30, 0, 51, 0.3);
-            }
-            .offer-highlight {
-                background: linear-gradient(45deg, #ff0066, #ff66b3);
-                color: white;
-                padding: 5px 10px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-        </style>
-        """, unsafe_allow_html=True)
-
-        st.markdown("""
-        <div style="text-align: center; margin-bottom: 30px;">
-            <h2 style="color: #ff66b3; border-bottom: 2px solid #ff66b3; display: inline-block; padding-bottom: 5px;">📦 PACOTES EXCLUSIVOS</h2>
-            <p style="color: #aaa; margin-top: 10px;">Escolha o que melhor combina com seus desejos...</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown('<div class="package-container">', unsafe_allow_html=True)
-        
-        st.markdown("""
-        <div class="package-box package-start">
-            <div class="package-header">
-                <h3 style="color: #ff66b3;">START</h3>
-                <div class="package-price" style="color: #ff66b3;">R$ 19,00</div>
-                <small>para iniciantes</small>
-            </div>
-            <ul class="package-benefits">
-                <li>10 fotos Inéditas</li>
-                <li>3 vídeo Intimos</li>
-                <li>Fotos Exclusivas</li>
-                <li>Videos Intimos </li>
-                <li>Fotos Buceta</li>
-            </ul>
-            <div style="position: absolute; bottom: 20px; width: calc(100% - 40px);">
-                <a href="{checkout_start}" target="_blank" rel="noopener noreferrer" style="
-                    display: block;
-                    background: linear-gradient(45deg, #ff66b3, #ff1493);
-                    color: white;
-                    text-align: center;
-                    padding: 10px;
-                    border-radius: 8px;
-                    text-decoration: none;
-                    font-weight: bold;
-                    transition: all 0.3s;
-                " onmouseover="this.style.transform='scale(1.05)'" 
-                onmouseout="this.style.transform='scale(1)'"
-                onclick="this.innerHTML='REDIRECIONANDO ⌛'; this.style.opacity='0.7'">
-                    QUERO ESTE PACOTE ➔
-                </a>
-            </div>
-        </div>
-        """.format(checkout_start=Config.CHECKOUT_START), unsafe_allow_html=True)
-
-        st.markdown("""
-        <div class="package-box package-premium">
-            <div class="package-badge">POPULAR</div>
-            <div class="package-header">
-                <h3 style="color: #9400d3;">PREMIUM</h3>
-                <div class="package-price" style="color: #9400d3;">R$ 49,00</div>
-                <small>experiência completa</small>
-            </div>
-            <ul class="package-benefits">
-                <li>20 fotos exclusivas</li>
-                <li>5 vídeos premium</li>
-                <li>Fotos Peito</li>
-                <li>Fotos Bunda</li>
-                <li>Fotos Buceta</li>
-                <li>Fotos Exclusivas e Videos Exclusivos</li>
-                <li>Videos Masturbando</li>
-            </ul>
-            <div style="position: absolute; bottom: 20px; width: calc(100% - 40px);">
-                <a href="{checkout_premium}" target="_blank" rel="noopener noreferrer" style="
-                    display: block;
-                    background: linear-gradient(45deg, #9400d3, #ff1493);
-                    color: white;
-                    text-align: center;
-                    padding: 10px;
-                    border-radius: 8px;
-                    text-decoration: none;
-                    font-weight: bold;
-                    transition: all 0.3s;
-                " onmouseover="this.style.transform='scale(1.05)'" 
-                onmouseout="this.style.transform='scale(1)'"
-                onclick="this.innerHTML='REDIRECIONANDO ⌛'; this.style.opacity='0.7'">
-                    QUERO ESTE PACOTE ➔
-                </a>
-            </div>
-        </div>
-        """.format(checkout_premium=Config.CHECKOUT_PREMIUM), unsafe_allow_html=True)
-
-        st.markdown("""
-        <div class="package-box package-extreme">
-            <div class="package-header">
-                <h3 style="color: #ff0066;">EXTREME</h3>
-                <div class="package-price" style="color: #ff0066;">R$ 59,00</div>
-                <small>para verdadeiros fãs</small>
-            </div>
-            <ul class="package-benefits">
-                <li>30 fotos ultra-exclusivas</li>
-                <li>10 Videos Exclusivos</li>
-                <li>Fotos Peito</li>
-                <li>Fotos Bunda</li>
-                <li>Fotos Buceta</li>
-                <li>Fotos Exclusivas</li>
-                <li>Videos Masturbando</li>
-                <li>Videos Transando</li>
-                <li>Acesso a conteúdos futuros</li>
-            </ul>
-            <div style="position: absolute; bottom: 20px; width: calc(100% - 40px);">
-                <a href="{checkout_extreme}" target="_blank" rel="noopener noreferrer" style="
-                    display: block;
-                    background: linear-gradient(45deg, #ff0066, #9400d3);
-                    color: white;
-                    text-align: center;
-                    padding: 10px;
-                    border-radius: 8px;
-                    text-decoration: none;
-                    font-weight: bold;
-                    transition: all 0.3s;
-                " onmouseover="this.style.transform='scale(1.05)'" 
-                onmouseout="this.style.transform='scale(1)'"
-                onclick="this.innerHTML='REDIRECIONANDO ⌛'; this.style.opacity='0.7'">
-                    QUERO ESTE PACOTE ➔
-                </a>
-            </div>
-        </div>
-        """.format(checkout_extreme=Config.CHECKOUT_EXTREME), unsafe_allow_html=True)
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        st.markdown("""
-        <div class="countdown-container">
-            <h3 style="margin:0;">⏳ OFERTA RELÂMPAGO</h3>
-            <div id="countdown" style="font-size: 1.5em; font-weight: bold;">23:59:59</div>
-            <p style="margin:5px 0 0;">Termina em breve!</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.components.v1.html("""
-        <script>
-        function updateCountdown() {
-            const countdownElement = parent.document.getElementById('countdown');
-            if (!countdownElement) return;
-            
-            let time = countdownElement.textContent.split(':');
-            let hours = parseInt(time[0]);
-            let minutes = parseInt(time[1]);
-            let seconds = parseInt(time[2]);
-            
-            seconds--;
-            if (seconds < 0) { seconds = 59; minutes--; }
-            if (minutes < 0) { minutes = 59; hours--; }
-            if (hours < 0) { hours = 23; }
-            
-            countdownElement.textContent = 
-                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-            
-            setTimeout(updateCountdown, 1000);
-        }
-        
-        setTimeout(updateCountdown, 1000);
-        </script>
-        """, height=0)
-
-        plans = [
-            {
-                "name": "1 Mês",
-                "price": "R$ 29,90",
-                "original": "R$ 49,90",
-                "benefits": ["Acesso total", "Conteúdo novo diário", "Chat privado"],
-                "tag": "COMUM",
-                "link": Config.CHECKOUT_VIP_1MES + "?plan=1mes"
-            },
-            {
-                "name": "3 Meses",
-                "price": "R$ 69,90",
-                "original": "R$ 149,70",
-                "benefits": ["25% de desconto", "Bônus: 1 vídeo exclusivo", "Meu whatsapp pessoal"],
-                "tag": "MAIS POPULAR",
-                "link": Config.CHECKOUT_VIP_3MESES + "?plan=3meses"
-            },
-            {
-                "name": "1 Ano",
-                "price": "R$ 199,90",
-                "original": "R$ 598,80",
-                "benefits": ["66% de desconto", "Meu whatsapp pessoal", "Video Chamadas particular"],
-                "tag": "MELHOR CUSTO-BENEFÍCIO",
-                "link": Config.CHECKOUT_VIP_1ANO + "?plan=1ano"
-            }
-        ]
-
-        for plan in plans:
-            with st.container():
-                st.markdown(f"""
-                <div class="offer-card">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <h3>{plan['name']}</h3>
-                        {f'<span class="offer-highlight">{plan["tag"]}</span>' if plan["tag"] else ''}
-                    </div>
-                    <div style="margin: 10px 0;">
-                        <span style="font-size: 1.8em; color: #ff66b3; font-weight: bold;">{plan['price']}</span>
-                        <span style="text-decoration: line-through; color: #888; margin-left: 10px;">{plan['original']}</span>
-                    </div>
-                    <ul style="padding-left: 20px;">
-                        {''.join([f'<li style="margin-bottom: 5px;">{benefit}</li>' for benefit in plan['benefits']])}
-                    </ul>
-                    <div style="text-align: center; margin-top: 15px;">
-                        <a href="{plan['link']}" style="
-                            background: linear-gradient(45deg, #ff1493, #9400d3);
-                            color: white;
-                            padding: 10px 20px;
-                            border-radius: 30px;
-                            text-decoration: none;
-                            display: inline-block;
-                            font-weight: bold;
-                        ">
-                            Assinar {plan['name']}
-                        </a>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-        if st.button("← Voltar ao chat", key="back_from_offers"):
-            st.session_state.current_page = "chat"
-            st.rerun()
+            st.error(f"Erro na API: {str(e)}")
+            return {"text": "Vamos continuar isso mais tarde...", "cta": {"show": False}}
 
 # ======================
 # SERVIÇOS DE INTERFACE
@@ -752,14 +509,14 @@ class UiService:
     @staticmethod
     def show_status_effect(container, status_type):
         status_messages = {
-            "viewed": ["Visualizado", "Mensagem recebida", "Recebido"],
-            "typing": ["Digitando", "Respondendo", "Escrevendo"]
+            "viewed": "Visualizado",
+            "typing": "Digitando"
         }
         
-        message = random.choice(status_messages[status_type])
+        message = status_messages[status_type]
         dots = ""
         start_time = time.time()
-        duration = 2.5 if status_type == "viewed" else random.uniform(3, 7)
+        duration = 2.5 if status_type == "viewed" else 4.0
         
         while time.time() - start_time < duration:
             elapsed = time.time() - start_time
@@ -866,7 +623,7 @@ class UiService:
 
         col1, col2, col3 = st.columns([1,2,1])
         with col2:
-            if st.button("✅ Confirmo que sou maior de 18 anos", 
+            if st.button("Confirmo que sou maior de 18 anos", 
                         key="age_checkbox",
                         use_container_width=True,
                         type="primary"):
@@ -882,6 +639,16 @@ class UiService:
                 [data-testid="stSidebar"] {
                     background: linear-gradient(180deg, #1e0033 0%, #3c0066 100%) !important;
                     border-right: 1px solid #ff66b3 !important;
+                }
+                .sidebar-logo-container {
+                    margin: -25px -25px 0px -25px;
+                    padding: 0;
+                    text-align: left;
+                }
+                .sidebar-logo {
+                    max-width: 100%;
+                    height: auto;
+                    margin-bottom: -10px;
                 }
                 .sidebar-header {
                     text-align: center; 
@@ -910,7 +677,32 @@ class UiService:
                 .menu-item:hover {
                     background: rgba(255, 102, 179, 0.2);
                 }
+                .sidebar-logo {
+                    width: 280px;
+                    height: auto;
+                    object-fit: contain;
+                    margin-left: -15px;
+                    margin-top: -15px;
+                }
+                @media (min-width: 768px) {
+                    .sidebar-logo {
+                        width: 320px;
+                    }
+                }
+                [data-testid="stSidebarNav"] {
+                    margin-top: -50px;
+                }
+                .sidebar-logo-container {
+                    position: relative;
+                    z-index: 1;
+                }
             </style>
+            """, unsafe_allow_html=True)
+            
+            st.markdown(f"""
+            <div class="sidebar-logo-container">
+                <img src="{Config.LOGO_URL}" class="sidebar-logo" alt="Golden Pepper Logo">
+            </div>
             """, unsafe_allow_html=True)
             
             st.markdown("""
@@ -924,50 +716,45 @@ class UiService:
             st.markdown("### Menu Exclusivo")
             
             menu_options = {
-                "💋 Início": "home",
-                "📸 Galeria Privada": "gallery",
-                "💌 Mensagens": "messages",
-                "🎁 Ofertas Especiais": "offers"
+                "Início": "home",
+                "Galeria Privada": "gallery",
+                "Mensagens": "messages",
+                "Ofertas Especiais": "offers"
             }
             
             for option, page in menu_options.items():
                 if st.button(option, use_container_width=True, key=f"menu_{page}"):
-                    st.session_state.current_page = page
-                    save_persistent_data()
-                    st.rerun()
+                    if st.session_state.current_page != page:
+                        st.session_state.current_page = page
+                        st.session_state.last_action = f"page_change_to_{page}"
+                        save_persistent_data()
+                        st.rerun()
             
             st.markdown("---")
-            st.markdown("### 🔒 Sua Conta")
+            st.markdown("### Sua Conta")
             
-            status = "VIP Ativo" if random.random() > 0.2 else "Conteúdo Básico"
-            status_color = "#2ecc71" if status == "VIP Ativo" else "#f39c12"
-            
-            st.markdown(f"""
+            st.markdown("""
             <div style="
-                background: rgba(255, 20, 147, 0.1); 
-                padding: 10px; 
+                background: rgba(255, 20, 147, 0.1);
+                padding: 10px;
                 border-radius: 8px;
+                text-align: center;
             ">
-                <p style="margin: 0; font-size: 0.9em;">
-                    Status: <span style="color: {status_color}">{status}</span>
-                </p>
-                <p style="margin: 5px 0 0; font-size: 0.8em;">
-                    Expira em: {random.randint(1,30)} dias
-                </p>
+                <p style="margin:0;">Acesse conteúdo exclusivo</p>
             </div>
             """, unsafe_allow_html=True)
             
             st.markdown("---")
-            st.markdown("### 💎 Upgrade VIP")
+            st.markdown("### Upgrade VIP")
             st.markdown("""
             <div class="vip-badge">
                 <p style="margin: 0 0 10px; font-weight: bold;">Acesso completo por apenas</p>
-                <p style="margin: 0; font-size: 1.5em; font-weight: bold;">R$ 19,00/mês</p>
+                <p style="margin: 0; font-size: 1.5em; font-weight: bold;">R$ 29,90/mês</p>
                 <p style="margin: 10px 0 0; font-size: 0.8em;">Cancele quando quiser</p>
             </div>
             """, unsafe_allow_html=True)
             
-            if st.button("🔼 Tornar-se VIP", use_container_width=True, type="primary"):
+            if st.button("Tornar-se VIP", use_container_width=True, type="primary"):
                 st.session_state.current_page = "offers"
                 save_persistent_data()
                 st.rerun()
@@ -976,13 +763,12 @@ class UiService:
             st.markdown("""
             <div style="text-align: center; font-size: 0.7em; color: #888;">
                 <p>© 2024 Paloma Premium</p>
-                <p>🔞 Conteúdo para maiores de 18 anos</p>
+                <p>Conteúdo para maiores de 18 anos</p>
             </div>
             """, unsafe_allow_html=True)
 
     @staticmethod
     def show_gallery_page(conn):
-        st.title("📸 Galeria Privada")
         st.markdown("""
         <div style="
             background: rgba(255, 20, 147, 0.1);
@@ -990,7 +776,7 @@ class UiService:
             border-radius: 10px;
             margin-bottom: 20px;
         ">
-            <p style="margin: 0;">Conteúdo exclusivo para assinantes VIP</p>
+            <p style="margin: 0;">Conteúdo exclusivo disponível</p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -1010,26 +796,26 @@ class UiService:
                     color: #ff66b3;
                     margin-top: -10px;
                 ">
-                    🔒 Conteúdo bloqueado
+                    Conteúdo bloqueado
                 </div>
                 """, unsafe_allow_html=True)
         
         st.markdown("---")
         st.markdown("""
         <div style="text-align: center;">
-            <h4>🔓 Desbloqueie acesso completo</h4>
+            <h4>Desbloqueie acesso completo</h4>
             <p>Assine o plano VIP para ver todos os conteúdos</p>
         </div>
         """, unsafe_allow_html=True)
 
-        if st.button("💎 Tornar-se VIP", 
+        if st.button("Tornar-se VIP", 
                     key="vip_button_gallery", 
                     use_container_width=True,
                     type="primary"):
             st.session_state.current_page = "offers"
             st.rerun()
         
-        if st.button("← Voltar ao chat", key="back_from_gallery"):
+        if st.button("Voltar ao chat", key="back_from_gallery"):
             st.session_state.current_page = "chat"
             save_persistent_data()
             st.rerun()
@@ -1038,28 +824,28 @@ class UiService:
     def chat_shortcuts():
         cols = st.columns(4)
         with cols[0]:
-            if st.button("🏠 Início", key="shortcut_home", 
+            if st.button("Início", key="shortcut_home", 
                        help="Voltar para a página inicial",
                        use_container_width=True):
                 st.session_state.current_page = "home"
                 save_persistent_data()
                 st.rerun()
         with cols[1]:
-            if st.button("📸 Galeria", key="shortcut_gallery",
+            if st.button("Galeria", key="shortcut_gallery",
                        help="Acessar galeria privada",
                        use_container_width=True):
                 st.session_state.current_page = "gallery"
                 save_persistent_data()
                 st.rerun()
         with cols[2]:
-            if st.button("🎁 Ofertas", key="shortcut_offers",
+            if st.button("Ofertas", key="shortcut_offers",
                        help="Ver ofertas especiais",
                        use_container_width=True):
                 st.session_state.current_page = "offers"
                 save_persistent_data()
                 st.rerun()
         with cols[3]:
-            if st.button("💎 VIP", key="shortcut_vip",
+            if st.button("VIP", key="shortcut_vip",
                        help="Acessar área VIP",
                        use_container_width=True):
                 st.session_state.current_page = "vip"
@@ -1117,7 +903,7 @@ class UiService:
         
         st.markdown(f"""
         <div class="chat-header">
-            <h2 style="margin:0; font-size:1.5em; display:inline-block;">💬 Chat Privado com Paloma</h2>
+            <h2 style="margin:0; font-size:1.5em; display:inline-block;">Chat Privado com Paloma</h2>
         </div>
         """, unsafe_allow_html=True)
         
@@ -1147,9 +933,392 @@ class UiService:
             font-size: 0.8em;
             color: #888;
         ">
-            <p>🔒 Conversa privada • ✉️ Suas mensagens são confidenciais</p>
+            <p>Conversa privada • Suas mensagens são confidenciais</p>
         </div>
         """, unsafe_allow_html=True)
+
+# ======================
+# PÁGINAS
+# ======================
+class NewPages:
+    @staticmethod
+    def show_home_page():
+        st.markdown("""
+        <style>
+            .hero-banner {
+                background: linear-gradient(135deg, #1e0033, #3c0066);
+                padding: 80px 20px;
+                text-align: center;
+                border-radius: 15px;
+                color: white;
+                margin-bottom: 30px;
+                border: 2px solid #ff66b3;
+            }
+            .preview-img {
+                border-radius: 10px;
+                filter: blur(3px) brightness(0.7);
+                transition: all 0.3s;
+            }
+            .preview-img:hover {
+                filter: blur(0) brightness(1);
+            }
+        </style>
+        """, unsafe_allow_html=True)
+
+        st.markdown("""
+        <div class="hero-banner">
+            <h1 style="color: #ff66b3;">Paloma Premium</h1>
+            <p>Conteúdo exclusivo que você não encontra em nenhum outro lugar...</p>
+            <div style="margin-top: 20px;">
+                <a href="#vip" style="
+                    background: #ff66b3;
+                    color: white;
+                    padding: 10px 25px;
+                    border-radius: 30px;
+                    text-decoration: none;
+                    font-weight: bold;
+                    display: inline-block;
+                ">Quero Acessar Tudo</a>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        cols = st.columns(3)
+        
+        for col, img in zip(cols, Config.IMG_HOME_PREVIEWS):
+            with col:
+                st.image(img, use_container_width=True, caption="Conteúdo bloqueado", output_format="auto")
+                st.markdown("""<div style="text-align:center; color: #ff66b3; margin-top: -15px;">VIP Only</div>""", unsafe_allow_html=True)
+
+        st.markdown("---")
+        
+        if st.button("Iniciar Conversa Privada", 
+                    use_container_width=True,
+                    type="primary"):
+            st.session_state.current_page = "chat"
+            save_persistent_data()
+            st.rerun()
+
+        if st.button("Voltar ao chat", key="back_from_home"):
+            st.session_state.current_page = "chat"
+            save_persistent_data()
+            st.rerun()
+
+    @staticmethod
+    def show_offers_page():
+        st.markdown("""
+        <style>
+            .package-container {
+                display: flex;
+                justify-content: space-between;
+                margin: 30px 0;
+                gap: 20px;
+            }
+            .package-box {
+                flex: 1;
+                background: rgba(30, 0, 51, 0.3);
+                border-radius: 15px;
+                padding: 20px;
+                border: 1px solid;
+                transition: all 0.3s;
+                min-height: 400px;
+                position: relative;
+                overflow: hidden;
+            }
+            .package-box:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 10px 20px rgba(255, 102, 179, 0.3);
+            }
+            .package-start {
+                border-color: #ff66b3;
+            }
+            .package-premium {
+                border-color: #9400d3;
+            }
+            .package-extreme {
+                border-color: #ff0066;
+            }
+            .package-header {
+                text-align: center;
+                padding-bottom: 15px;
+                margin-bottom: 15px;
+                border-bottom: 1px solid rgba(255, 102, 179, 0.3);
+            }
+            .package-price {
+                font-size: 1.8em;
+                font-weight: bold;
+                margin: 10px 0;
+            }
+            .package-benefits {
+                list-style-type: none;
+                padding: 0;
+            }
+            .package-benefits li {
+                padding: 8px 0;
+                position: relative;
+                padding-left: 25px;
+            }
+            .package-benefits li:before {
+                content: "✓";
+                color: #ff66b3;
+                position: absolute;
+                left: 0;
+                font-weight: bold;
+            }
+            .package-badge {
+                position: absolute;
+                top: 15px;
+                right: -30px;
+                background: #ff0066;
+                color: white;
+                padding: 5px 30px;
+                transform: rotate(45deg);
+                font-size: 0.8em;
+                font-weight: bold;
+                width: 100px;
+                text-align: center;
+            }
+            .countdown-container {
+                background: linear-gradient(45deg, #ff0066, #ff66b3);
+                color: white;
+                padding: 15px;
+                border-radius: 10px;
+                margin: 40px 0;
+                box-shadow: 0 4px 15px rgba(255, 0, 102, 0.3);
+                text-align: center;
+            }
+            .offer-card {
+                border: 1px solid #ff66b3;
+                border-radius: 15px;
+                padding: 20px;
+                margin-bottom: 20px;
+                background: rgba(30, 0, 51, 0.3);
+            }
+            .offer-highlight {
+                background: linear-gradient(45deg, #ff0066, #ff66b3);
+                color: white;
+                padding: 5px 10px;
+                border-radius: 5px;
+                font-weight: bold;
+        </style>
+        """, unsafe_allow_html=True)
+
+        st.markdown("""
+        <div style="text-align: center; margin-bottom: 30px;">
+            <h2 style="color: #ff66b3; border-bottom: 2px solid #ff66b3; display: inline-block; padding-bottom: 5px;">PACOTES EXCLUSIVOS</h2>
+            <p style="color: #aaa; margin-top: 10px;">Escolha o que melhor combina com seus desejos...</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown('<div class="package-container">', unsafe_allow_html=True)
+        
+        st.markdown("""
+        <div class="package-box package-start">
+            <div class="package-header">
+                <h3 style="color: #ff66b3;">START</h3>
+                <div class="package-price" style="color: #ff66b3;">R$ 49,90</div>
+                <small>para iniciantes</small>
+            </div>
+            <ul class="package-benefits">
+                <li>10 fotos Inéditas</li>
+                <li>3 vídeo Intimos</li>
+                <li>Fotos Exclusivas</li>
+                <li>Videos Intimos </li>
+                <li>Fotos Buceta</li>
+            </ul>
+            <div style="position: absolute; bottom: 20px; width: calc(100% - 40px);">
+                <a href="{checkout_start}" target="_blank" rel="noopener noreferrer" style="
+                    display: block;
+                    background: linear-gradient(45deg, #ff66b3, #ff1493);
+                    color: white;
+                    text-align: center;
+                    padding: 10px;
+                    border-radius: 8px;
+                    text-decoration: none;
+                    font-weight: bold;
+                    transition: all 0.3s;
+                " onmouseover="this.style.transform='scale(1.05)'" 
+                onmouseout="this.style.transform='scale(1)'"
+                onclick="this.innerHTML='REDIRECIONANDO ⌛'; this.style.opacity='0.7'">
+                    QUERO ESTE PACOTE ➔
+                </a>
+            </div>
+        </div>
+        """.format(checkout_start=Config.CHECKOUT_START), unsafe_allow_html=True)
+
+        st.markdown("""
+        <div class="package-box package-premium">
+            <div class="package-badge">POPULAR</div>
+            <div class="package-header">
+                <h3 style="color: #9400d3;">PREMIUM</h3>
+                <div class="package-price" style="color: #9400d3;">R$ 99,90</div>
+                <small>experiência completa</small>
+            </div>
+            <ul class="package-benefits">
+                <li>20 fotos exclusivas</li>
+                <li>5 vídeos premium</li>
+                <li>Fotos Peito</li>
+                <li>Fotos Bunda</li>
+                <li>Fotos Buceta</li>
+                <li>Fotos Exclusivas e Videos Exclusivos</li>
+                <li>Videos Masturbando</li>
+            </ul>
+            <div style="position: absolute; bottom: 20px; width: calc(100% - 40px);">
+                <a href="{checkout_premium}" target="_blank" rel="noopener noreferrer" style="
+                    display: block;
+                    background: linear-gradient(45deg, #9400d3, #ff1493);
+                    color: white;
+                    text-align: center;
+                    padding: 10px;
+                    border-radius: 8px;
+                    text-decoration: none;
+                    font-weight: bold;
+                    transition: all 0.3s;
+                " onmouseover="this.style.transform='scale(1.05)'" 
+                onmouseout="this.style.transform='scale(1)'"
+                onclick="this.innerHTML='REDIRECIONANDO ⌛'; this.style.opacity='0.7'">
+                    QUERO ESTE PACOTE ➔
+                </a>
+            </div>
+        </div>
+        """.format(checkout_premium=Config.CHECKOUT_PREMIUM), unsafe_allow_html=True)
+
+        st.markdown("""
+        <div class="package-box package-extreme">
+            <div class="package-header">
+                <h3 style="color: #ff0066;">EXTREME</h3>
+                <div class="package-price" style="color: #ff0066;">R$ 199,90</div>
+                <small>para verdadeiros fãs</small>
+            </div>
+            <ul class="package-benefits">
+                <li>30 fotos ultra-exclusivas</li>
+                <li>10 Videos Exclusivos</li>
+                <li>Fotos Peito</li>
+                <li>Fotos Bunda</li>
+                <li>Fotos Buceta</li>
+                <li>Fotos Exclusivas</li>
+                <li>Videos Masturbando</li>
+                <li>Videos Transando</li>
+                <li>Acesso a conteúdos futuros</li>
+            </ul>
+            <div style="position: absolute; bottom: 20px; width: calc(100% - 40px);">
+                <a href="{checkout_extreme}" target="_blank" rel="noopener noreferrer" style="
+                    display: block;
+                    background: linear-gradient(45deg, #ff0066, #9400d3);
+                    color: white;
+                    text-align: center;
+                    padding: 10px;
+                    border-radius: 8px;
+                    text-decoration: none;
+                    font-weight: bold;
+                    transition: all 0.3s;
+                " onmouseover="this.style.transform='scale(1.05)'" 
+                onmouseout="this.style.transform='scale(1)'"
+                onclick="this.innerHTML='REDIRECIONANDO ⌛'; this.style.opacity='0.7'">
+                    QUERO ESTE PACOTE ➔
+                </a>
+            </div>
+        </div>
+        """.format(checkout_extreme=Config.CHECKOUT_EXTREME), unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        st.markdown("""
+        <div class="countdown-container">
+            <h3 style="margin:0;">OFERTA RELÂMPAGO</h3>
+            <div id="countdown" style="font-size: 1.5em; font-weight: bold;">23:59:59</div>
+            <p style="margin:5px 0 0;">Termina em breve!</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.components.v1.html("""
+        <script>
+        function updateCountdown() {
+            const countdownElement = parent.document.getElementById('countdown');
+            if (!countdownElement) return;
+            
+            let time = countdownElement.textContent.split(':');
+            let hours = parseInt(time[0]);
+            let minutes = parseInt(time[1]);
+            let seconds = parseInt(time[2]);
+            
+            seconds--;
+            if (seconds < 0) { seconds = 59; minutes--; }
+            if (minutes < 0) { minutes = 59; hours--; }
+            if (hours < 0) { hours = 23; }
+            
+            countdownElement.textContent = 
+                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            setTimeout(updateCountdown, 1000);
+        }
+        
+        setTimeout(updateCountdown, 1000);
+        </script>
+        """, height=0)
+
+        plans = [
+            {
+                "name": "1 Mês",
+                "price": "R$ 29,90",
+                "original": "R$ 49,90",
+                "benefits": ["Acesso total", "Conteúdo novo diário", "Chat privado"],
+                "tag": "COMUM",
+                "link": Config.CHECKOUT_VIP_1MES + "?plan=1mes"
+            },
+            {
+                "name": "3 Meses",
+                "price": "R$ 69,90",
+                "original": "R$ 149,70",
+                "benefits": ["25% de desconto", "Bônus: 1 vídeo exclusivo", "Prioridade no chat"],
+                "tag": "MAIS POPULAR",
+                "link": Config.CHECKOUT_VIP_3MESES + "?plan=3meses"
+            },
+            {
+                "name": "1 Ano",
+                "price": "R$ 199,90",
+                "original": "R$ 598,80",
+                "benefits": ["66% de desconto", "Presente surpresa mensal", "Acesso a conteúdos raros"],
+                "tag": "MELHOR CUSTO-BENEFÍCIO",
+                "link": Config.CHECKOUT_VIP_1ANO + "?plan=1ano"
+            }
+        ]
+
+        for plan in plans:
+            with st.container():
+                st.markdown(f"""
+                <div class="offer-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3>{plan['name']}</h3>
+                        {f'<span class="offer-highlight">{plan["tag"]}</span>' if plan["tag"] else ''}
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <span style="font-size: 1.8em; color: #ff66b3; font-weight: bold;">{plan['price']}</span>
+                        <span style="text-decoration: line-through; color: #888; margin-left: 10px;">{plan['original']}</span>
+                    </div>
+                    <ul style="padding-left: 20px;">
+                        {''.join([f'<li style="margin-bottom: 5px;">{benefit}</li>' for benefit in plan['benefits']])}
+                    </ul>
+                    <div style="text-align: center; margin-top: 15px;">
+                        <a href="{plan['link']}" style="
+                            background: linear-gradient(45deg, #ff1493, #9400d3);
+                            color: white;
+                            padding: 10px 20px;
+                            border-radius: 30px;
+                            text-decoration: none;
+                            display: inline-block;
+                            font-weight: bold;
+                        ">
+                            Assinar {plan['name']}
+                        </a>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        if st.button("Voltar ao chat", key="back_from_offers"):
+            st.session_state.current_page = "chat"
+            save_persistent_data()
+            st.rerun()
 
 # ======================
 # SERVIÇOS DE CHAT
@@ -1181,7 +1350,8 @@ class ChatService:
             'chat_started': False,
             'audio_sent': False,
             'current_page': 'home',
-            'show_vip_offer': False
+            'show_vip_offer': False,
+            'last_cta_time': 0  # Novo campo adicionado
         }
         
         for key, default in defaults.items():
@@ -1189,10 +1359,29 @@ class ChatService:
                 st.session_state[key] = default
 
     @staticmethod
+    def format_conversation_history(messages, max_messages=10):
+        formatted = []
+        
+        for msg in messages[-max_messages:]:
+            role = "Cliente" if msg["role"] == "user" else "Paloma"
+            content = msg["content"]
+            if content == "[ÁUDIO]":
+                content = "[Enviou um áudio sensual]"
+            elif content.startswith('{"text"'):
+                try:
+                    content = json.loads(content).get("text", content)
+                except:
+                    pass
+            
+            formatted.append(f"{role}: {content}")
+        
+        return "\n".join(formatted)
+
+    @staticmethod
     def display_chat_history():
         chat_container = st.container()
         with chat_container:
-            for msg in st.session_state.messages[-12:]:
+            for idx, msg in enumerate(st.session_state.messages[-12:]):
                 if msg["role"] == "user":
                     with st.chat_message("user", avatar="🧑"):
                         st.markdown(f"""
@@ -1221,17 +1410,18 @@ class ChatService:
                                     border-radius: 18px 18px 18px 0;
                                     margin: 5px 0;
                                 ">
-                                    {content_data.get("text", "")} {random.choice(["💋", "🔥", "😈"])}
+                                    {content_data.get("text", "")}
                                 </div>
                                 """, unsafe_allow_html=True)
                                 
-                                if content_data.get("button", False):
+                                # Mostrar botão apenas na última mensagem
+                                if content_data.get("cta", {}).get("show") and idx == len(st.session_state.messages[-12:]) - 1:
                                     if st.button(
-                                        content_data.get("button_text", "Ver Ofertas"),
-                                        key=f"hist_button_{msg.get('timestamp', '')}",
+                                        content_data.get("cta", {}).get("label", "Ver Ofertas"),
+                                        key=f"cta_button_{hash(msg['content'])}",  # Chave única baseada no conteúdo
                                         use_container_width=True
                                     ):
-                                        st.session_state.current_page = content_data.get("button_target", "offers")
+                                        st.session_state.current_page = content_data.get("cta", {}).get("target", "offers")
                                         save_persistent_data()
                                         st.rerun()
                         else:
@@ -1244,7 +1434,7 @@ class ChatService:
                                     border-radius: 18px 18px 18px 0;
                                     margin: 5px 0;
                                 ">
-                                    {msg["content"]} {random.choice(["💋", "🔥", "😈"])}
+                                    {msg["content"]}
                                 </div>
                                 """, unsafe_allow_html=True)
                     except json.JSONDecodeError:
@@ -1257,7 +1447,7 @@ class ChatService:
                                 border-radius: 18px 18px 18px 0;
                                 margin: 5px 0;
                             ">
-                                {msg["content"]} {random.choice(["💋", "🔥", "😈"])}
+                                {msg["content"]}
                             </div>
                             """, unsafe_allow_html=True)
 
@@ -1289,7 +1479,7 @@ class ChatService:
             save_persistent_data()
             st.rerun()
         
-        user_input = st.chat_input("Oi amor, como posso te ajudar hoje? 💭", key="chat_input")
+        user_input = st.chat_input("Escreva sua mensagem aqui", key="chat_input")
         
         if user_input:
             cleaned_input = ChatService.validate_input(user_input)
@@ -1297,14 +1487,14 @@ class ChatService:
             if st.session_state.request_count >= Config.MAX_REQUESTS_PER_SESSION:
                 st.session_state.messages.append({
                     "role": "assistant",
-                    "content": "amor... Vou ficar ocupada agora, me manda mensagem depois? "
+                    "content": "Vou ficar ocupada agora, me manda mensagem depois?"
                 })
                 DatabaseService.save_message(
                     conn,
                     get_user_id(),
                     st.session_state.session_id,
                     "assistant",
-                    "Estou ficando cansada, amor... Que tal continuarmos mais tarde? 💋"
+                    "Estou ficando cansada, amor... Que tal continuarmos mais tarde?"
                 )
                 save_persistent_data()
                 st.rerun()
@@ -1339,51 +1529,43 @@ class ChatService:
             with st.chat_message("assistant", avatar="💋"):
                 resposta = ApiService.ask_gemini(cleaned_input, st.session_state.session_id, conn)
                 
-                if isinstance(resposta, dict):
-                    st.markdown(f"""
-                    <div style="
-                        background: linear-gradient(45deg, #ff66b3, #ff1493);
-                        color: white;
-                        padding: 12px;
-                        border-radius: 18px 18px 18px 0;
-                        margin: 5px 0;
-                    ">
-                        {resposta.get("text", "")} {random.choice(["💋", "🔥", "😈"])}
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    if resposta.get("button", False):
-                        if st.button(
-                            resposta.get("button_text", "Ver Ofertas"),
-                            key=f"chat_button_{time.time()}",
-                            use_container_width=True
-                        ):
-                            st.session_state.current_page = resposta.get("button_target", "offers")
-                            save_persistent_data()
-                            st.rerun()
-                else:
-                    st.markdown(f"""
-                    <div style="
-                        background: linear-gradient(45deg, #ff66b3, #ff1493);
-                        color: white;
-                        padding: 12px;
-                        border-radius: 18px 18px 18px 0;
-                        margin: 5px 0;
-                    ">
-                        {resposta} {random.choice(["💋", "🔥", "😈"])}
-                    </div>
-                    """, unsafe_allow_html=True)
+                if isinstance(resposta, str):
+                    resposta = {"text": resposta, "cta": {"show": False}}
+                elif "text" not in resposta:
+                    resposta = {"text": str(resposta), "cta": {"show": False}}
+                
+                st.markdown(f"""
+                <div style="
+                    background: linear-gradient(45deg, #ff66b3, #ff1493);
+                    color: white;
+                    padding: 12px;
+                    border-radius: 18px 18px 18px 0;
+                    margin: 5px 0;
+                ">
+                    {resposta["text"]}
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if resposta.get("cta", {}).get("show"):
+                    if st.button(
+                        resposta["cta"].get("label", "Ver Ofertas"),
+                        key=f"chat_button_{time.time()}",
+                        use_container_width=True
+                    ):
+                        st.session_state.current_page = resposta["cta"].get("target", "offers")
+                        save_persistent_data()
+                        st.rerun()
             
             st.session_state.messages.append({
                 "role": "assistant",
-                "content": json.dumps(resposta) if isinstance(resposta, dict) else resposta
+                "content": json.dumps(resposta)
             })
             DatabaseService.save_message(
                 conn,
                 get_user_id(),
                 st.session_state.session_id,
                 "assistant",
-                json.dumps(resposta) if isinstance(resposta, dict) else resposta
+                json.dumps(resposta)
             )
             
             save_persistent_data()
@@ -1440,8 +1622,6 @@ def main():
     
     conn = st.session_state.db_conn
     
-    st.title("💋 Paloma - Conteúdo Exclusivo")
-    
     ChatService.initialize_session(conn)
     
     if not st.session_state.age_verified:
@@ -1467,7 +1647,7 @@ def main():
             </div>
             """.format(profile_img=Config.IMG_PROFILE), unsafe_allow_html=True)
             
-            if st.button("💬 Iniciar Conversa", type="primary", use_container_width=True):
+            if st.button("Iniciar Conversa", type="primary", use_container_width=True):
                 st.session_state.update({
                     'chat_started': True,
                     'current_page': 'chat',
@@ -1489,7 +1669,7 @@ def main():
         st.rerun()
     elif st.session_state.get("show_vip_offer", False):
         st.warning("Página VIP em desenvolvimento")
-        if st.button("← Voltar ao chat"):
+        if st.button("Voltar ao chat"):
             st.session_state.show_vip_offer = False
             save_persistent_data()
             st.rerun()
